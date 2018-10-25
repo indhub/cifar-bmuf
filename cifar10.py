@@ -42,6 +42,7 @@ import tarfile
 
 from six.moves import urllib
 import tensorflow as tf
+import horovod.tensorflow as hvd
 
 import cifar10_input
 
@@ -353,6 +354,7 @@ def train(total_loss, global_step):
   # Compute gradients.
   with tf.control_dependencies([loss_averages_op]):
     opt = tf.train.GradientDescentOptimizer(lr)
+    opt = hvd.DistributedOptimizer(opt)
     grads = opt.compute_gradients(total_loss)
 
   # Apply gradients.

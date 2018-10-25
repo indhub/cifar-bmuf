@@ -40,6 +40,7 @@ from datetime import datetime
 import time
 
 import tensorflow as tf
+import horovod.tensorflow as hvd
 
 import cifar10
 
@@ -57,6 +58,10 @@ tf.app.flags.DEFINE_integer('log_frequency', 10,
 
 
 def train():
+
+  config = tf.ConfigProto()
+  config.gpu_options.visible_device_list = str(hvd.local_rank())
+
   """Train CIFAR-10 for a number of steps."""
   with tf.Graph().as_default():
     global_step = tf.train.get_or_create_global_step()
@@ -104,18 +109,23 @@ def train():
           print (format_str % (datetime.now(), self._step, loss_value,
                                examples_per_sec, sec_per_batch))
 
+    checkpoint_dir = FLAGS.train_dir if hvd.rank() == 0 else None
+
     with tf.train.MonitoredTrainingSession(
-        checkpoint_dir=FLAGS.train_dir,
+        checkpoint_dir=checkpoint_dir,
         hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
                tf.train.NanTensorHook(loss),
-               _LoggerHook()],
-        config=tf.ConfigProto(
-            log_device_placement=FLAGS.log_device_placement)) as mon_sess:
+               _LoggerHook(),
+               hvd.BroadcastGlobalVariablesHook(0)],
+        config=config) as mon_sess:
       while not mon_sess.should_stop():
         mon_sess.run(train_op)
 
 
 def main(argv=None):  # pylint: disable=unused-argument
+
+  hvd.init()
+
   cifar10.maybe_download_and_extract()
   if tf.gfile.Exists(FLAGS.train_dir):
     tf.gfile.DeleteRecursively(FLAGS.train_dir)
