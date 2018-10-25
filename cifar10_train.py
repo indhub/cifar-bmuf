@@ -116,15 +116,23 @@ def train():
         hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
                tf.train.NanTensorHook(loss),
                _LoggerHook(),
-               hvd.BroadcastGlobalVariablesHook(0)],
+               hvd.BroadcastGlobalVariablesHook(0, global_op=True)],
         config=config) as mon_sess:
       while not mon_sess.should_stop():
         mon_sess.run(train_op)
 
+from mpi4py import MPI
+def get_subcluster():
+  comm = MPI.COMM_WORLD
+  local_comm = comm.Split_type(MPI.COMM_TYPE_SHARED, comm.Get_rank())
+  local_size = local_comm.Get_size()
+  subcluster_left = (comm.rank // local_size) * local_size
+  subcluster_right = subcluster_left + local_size
+  return [i for i in range(subcluster_left, subcluster_right)]
 
 def main(argv=None):  # pylint: disable=unused-argument
 
-  hvd.init()
+  hvd.init(get_subcluster(), keep_global=True)
 
   cifar10.maybe_download_and_extract()
   if tf.gfile.Exists(FLAGS.train_dir):
